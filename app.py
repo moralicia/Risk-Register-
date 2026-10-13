@@ -523,8 +523,8 @@ def main():
     head_l, head_r = st.columns([5, 2])
     with head_l:
         st.title("📋 Register Risiko Pasar")
-        st.caption("Daftar risiko, penilaian, dan rencana mitigasi. "
-                   "Risk owner mengisi data di tab **Daftar Risiko**; manajemen melihat tab **Ringkasan**.")
+        st.caption("Risk Management Process. "
+                   "Risk owner mengisi data di tab **Daftar Risiko**.")
     with head_r:
         b1, b2 = st.columns(2)
         if b1.button("🔄 Muat ulang"):
