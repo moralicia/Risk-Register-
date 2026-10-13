@@ -180,3 +180,43 @@ class GoogleSheetsStorage:
         row = self._row_of(kode)
         if row is not None:
             self.ws.delete_rows(row)
+
+
+# ---------------------------------------------------------------------------
+# Connection diagnostics (never returns secret VALUES, only names / booleans)
+# ---------------------------------------------------------------------------
+def diagnose_secrets(secrets) -> dict:
+    """Describe what the app can see in its secrets, to explain demo mode."""
+    def get(section):
+        try:
+            return secrets[section]
+        except Exception:
+            return None
+
+    def has(container, key):
+        try:
+            return bool(container[key])
+        except Exception:
+            return False
+
+    try:
+        sections = [str(k) for k in secrets.keys()]
+    except Exception:
+        sections = []
+
+    gsheets = get("gsheets")
+    account = get("gcp_service_account")
+    private_key = ""
+    try:
+        private_key = str(account["private_key"])
+    except Exception:
+        pass
+    return {
+        "sections": sections,
+        "auth": get("auth") is not None,
+        "url": has(gsheets, "spreadsheet_url"),
+        "sa_section": account is not None,
+        "client_email": has(account, "client_email"),
+        "private_key_present": bool(private_key),
+        "private_key_format": "BEGIN PRIVATE KEY" in private_key and "END PRIVATE KEY" in private_key,
+    }

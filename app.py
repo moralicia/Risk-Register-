@@ -20,7 +20,7 @@ import streamlit as st
 
 import schema as S
 from sample_data import sample_risks
-from storage import CSVStorage, GoogleSheetsStorage
+from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
 
 st.set_page_config(page_title="Register Risiko Pasar", page_icon="📋", layout="wide",
                    initial_sidebar_state="collapsed")
@@ -38,17 +38,54 @@ def secret(section: str, key: str, default=None):
 
 
 @st.cache_resource(show_spinner=False)
+def _demo_storage():
+    return CSVStorage("data/risks.csv", seed=sample_risks())
+
+
+@st.cache_resource(show_spinner=False)
+def _connect_sheets(url: str, worksheet: str, _service_account: dict):
+    return GoogleSheetsStorage(url, worksheet, _service_account)
+
+
 def get_storage():
-    """Return (storage, mode). Google Sheets when configured, else local demo CSV."""
+    """Return (storage, mode, error). Uses Google Sheets when configured; otherwise
+    falls back to demo mode and reports why (error is '' when simply not configured)."""
     url = secret("gsheets", "spreadsheet_url")
     try:
         service_account = dict(st.secrets["gcp_service_account"])
     except Exception:
         service_account = None
     if url and service_account:
-        worksheet = secret("gsheets", "worksheet", "Risks")
-        return GoogleSheetsStorage(url, worksheet, service_account), "sheets"
-    return CSVStorage("data/risks.csv", seed=sample_risks()), "demo"
+        try:
+            worksheet = secret("gsheets", "worksheet", "Risks")
+            return _connect_sheets(url, worksheet, service_account), "sheets", ""
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user, not hidden
+            return _demo_storage(), "demo", f"{type(exc).__name__}: {str(exc)[:300]}"
+    return _demo_storage(), "demo", ""
+
+
+def render_demo_diagnostics(conn_error: str):
+    """Explain, without revealing secret values, why the app is in demo mode."""
+    if conn_error:
+        st.error(f"Secrets terbaca, tetapi gagal terhubung ke Google Sheets: {conn_error}")
+    with st.expander("🔍 Mengapa masih mode demo? (diagnostik koneksi)", expanded=not conn_error):
+        rep = diagnose_secrets(st.secrets)
+        mark = lambda ok: "✅" if ok else "❌"  # noqa: E731
+        sections = ", ".join(f"[{s}]" for s in rep["sections"]) or "tidak ada sama sekali"
+        st.markdown(
+            f"- Bagian yang terdeteksi di Secrets aplikasi **ini**: {sections}\n"
+            f"- {mark(rep['auth'])} Bagian `[auth]` (password)\n"
+            f"- {mark(rep['url'])} `[gsheets]` berisi `spreadsheet_url`\n"
+            f"- {mark(rep['sa_section'])} Bagian `[gcp_service_account]` ada\n"
+            f"- {mark(rep['client_email'])} `client_email` terisi\n"
+            f"- {mark(rep['private_key_present'])} `private_key` terisi\n"
+            f"- {mark(rep['private_key_format'])} `private_key` berformat lengkap (BEGIN ... END PRIVATE KEY)"
+        )
+        if not rep["sections"]:
+            st.warning("Secrets **kosong** pada aplikasi ini. Buka Manage app → Settings → Secrets "
+                       "dari aplikasi yang alamatnya sama dengan halaman ini, isi, Save, lalu Reboot app.")
+        else:
+            st.caption("Perbaiki baris yang bertanda ❌, Save, lalu Reboot app.")
 
 
 @st.cache_data(ttl=20, show_spinner="Memuat data risiko...")
@@ -479,7 +516,7 @@ def render_summary(df: pd.DataFrame):
 # ---------------------------------------------------------------------------
 def main():
     role = login_gate()
-    storage, mode = get_storage()
+    storage, mode, conn_error = get_storage()
     can_edit = role == "editor"
     df = load_df(storage)
 
@@ -500,6 +537,7 @@ def main():
     if mode == "demo":
         st.info("**Mode demo:** data di bawah adalah contoh fiktif dan hanya tersimpan sementara. "
                 "Sambungkan Google Sheets agar data tersimpan permanen dan dapat dipakai bersama.")
+        render_demo_diagnostics(conn_error)
     elif not (secret("auth", "viewer_password") or secret("auth", "editor_password")):
         st.warning("Aplikasi belum diproteksi password: siapa pun yang memiliki link dapat mengubah data. "
                    "Atur password di bagian [auth] pada secrets.")
