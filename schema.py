@@ -174,3 +174,49 @@ def risk_to_record(risk: dict) -> dict:
     record["inh_score"] = score(record["inh_l"] or 0, record["inh_i"] or 0)
     record["res_score"] = score(record["res_l"] or 0, record["res_i"] or 0)
     return record
+
+
+# ---------------------------------------------------------------------------
+# UI helpers (pure pandas - tested without Streamlit)
+# ---------------------------------------------------------------------------
+SEVERITY_ID = {"Critical": "Kritis", "High": "Tinggi", "Medium": "Sedang", "Low": "Rendah",
+               "Unrated": "Belum dinilai"}
+
+COMPACT_KEYS = ["kode", "potensi", "category", "divisi", "inh_score", "res_score",
+                "status", "review_date"]
+COMPACT_LABELS = {
+    "kode": "Kode", "potensi": "Potensi Risiko", "category": "Kategori", "divisi": "Divisi",
+    "inh_score": "Level Inherent", "res_score": "Level Target", "status": "Status",
+    "review_date": "Review berikutnya",
+}
+
+
+def heatmap_cells(df: pd.DataFrame, mode: str = "targeted") -> dict:
+    """Map (likelihood, impact) -> list of risk codes in that heat-map cell."""
+    l_col, i_col = ("res_l", "res_i") if mode == "targeted" else ("inh_l", "inh_i")
+    cells = {}
+    for like in range(1, 6):
+        for impact in range(1, 6):
+            sub = df[(df[l_col] == like) & (df[i_col] == impact)]
+            cells[(like, impact)] = list(sub["kode"])
+    return cells
+
+
+def display_frame(df: pd.DataFrame, view: str = "compact") -> pd.DataFrame:
+    """Table shown to users. 'compact' = 8 key columns, 'full' = all template columns."""
+    compact = view == "compact"
+    keys = COMPACT_KEYS if compact else KEYS
+    labels = COMPACT_LABELS if compact else LABELS
+    out = df[keys].copy()
+    for col in ("inh_score", "res_score"):
+        if col in out:
+            out[col] = out[col].apply(severity_label)
+    if "review_date" in out:
+        overdue = overdue_mask(df)
+        out["review_date"] = [
+            (d + "  ⚠️ terlambat") if o else (d or "—")
+            for d, o in zip(out["review_date"], overdue)
+        ]
+    if "sev_rp" in out:
+        out["sev_rp"] = out["sev_rp"].apply(lambda v: "—" if pd.isna(v) else f"{v:,.0f}")
+    return out.rename(columns=labels)
