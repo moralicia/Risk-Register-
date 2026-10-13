@@ -22,7 +22,7 @@ import schema as S
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
 
-st.set_page_config(page_title="Register Risiko Pasar", page_icon="📋", layout="wide",
+st.set_page_config(page_title="Register Risiko", page_icon="📋", layout="wide",
                    initial_sidebar_state="collapsed")
 
 
