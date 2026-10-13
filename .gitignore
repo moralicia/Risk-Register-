@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets - NEVER commit these
+.streamlit/secrets.toml
+*service-account*.json
+*credentials*.json
+
+# Local demo data
+data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
