@@ -396,7 +396,7 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
 # ---------------------------------------------------------------------------
 def render_register(df: pd.DataFrame, storage, can_edit: bool):
     if can_edit:
-        st.markdown("**Cara pakai:** klik **➕ Tambah risiko baru** untuk mengisi risiko baru. "
+        st.markdown("**Guidelines:** klik **➕ Tambah risiko baru** untuk mengisi risiko baru. "
                     "Untuk mengubah, **centang satu baris** di tabel lalu klik **✏️ Ubah risiko terpilih**.")
     else:
         st.info("Mode lihat saja: Anda dapat melihat dan mengunduh data, tetapi tidak dapat mengubahnya.")
