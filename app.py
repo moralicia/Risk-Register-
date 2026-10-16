@@ -109,7 +109,7 @@ def login_gate() -> str:
     if st.session_state.get("role"):
         return st.session_state["role"]
 
-    st.title("📋 Register Risiko Pasar")
+    st.title("📋 Risk Register")
     st.caption("Silakan masuk untuk melanjutkan.")
     password = st.text_input("Password", type="password")
     if st.button("Masuk", type="primary"):
@@ -522,7 +522,7 @@ def main():
 
     head_l, head_r = st.columns([5, 2])
     with head_l:
-        st.title("📋 Register Risiko Pasar")
+        st.title("📋 Risk Register")
         st.caption("Risk Management Process. "
                    "Risk owner mengisi data di tab **Daftar Risiko**.")
     with head_r:
