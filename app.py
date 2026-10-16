@@ -22,7 +22,7 @@ import schema as S
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
 
-st.set_page_config(page_title="Register Risiko Pasar", page_icon="📋", layout="wide",
+st.set_page_config(page_title="Risk Register", page_icon="📋", layout="wide",
                    initial_sidebar_state="collapsed")
 
 
@@ -109,7 +109,7 @@ def login_gate() -> str:
     if st.session_state.get("role"):
         return st.session_state["role"]
 
-    st.title("📋 Register Risiko Pasar")
+    st.title("📋 Risk Register")
     st.caption("Silakan masuk untuk melanjutkan.")
     password = st.text_input("Password", type="password")
     if st.button("Masuk", type="primary"):
@@ -522,7 +522,7 @@ def main():
 
     head_l, head_r = st.columns([5, 2])
     with head_l:
-        st.title("📋 Register Risiko Pasar")
+        st.title("📋 Risk Register")
         st.caption("Daftar risiko, penilaian, dan rencana mitigasi. "
                    "Risk owner mengisi data di tab **Daftar Risiko**; manajemen melihat tab **Ringkasan**.")
     with head_r:
