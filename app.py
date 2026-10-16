@@ -1,4 +1,4 @@
-"""Register Risiko Pasar (Market Risk Register) - Streamlit app, v2 layout.
+"""Register Risiko (Risk Register) - Streamlit app, v2 layout.
 
 Layout is designed for risk owners who fill in data:
   Tab 1  "Daftar Risiko"  -> action buttons first, then the register table
