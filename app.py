@@ -1,4 +1,4 @@
-"""Register Risiko (Risk Register) - Streamlit app, v2 layout.
+"""Register Risiko Pasar (Market Risk Register) - Streamlit app, v2 layout.
 
 Layout is designed for risk owners who fill in data:
   Tab 1  "Daftar Risiko"  -> action buttons first, then the register table
@@ -19,10 +19,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import schema as S
+import teks as T
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
 
-st.set_page_config(page_title="Risk Register", page_icon="📋", layout="wide",
+st.set_page_config(page_title=T.APP_TITLE, page_icon=T.APP_ICON, layout="wide",
                    initial_sidebar_state="collapsed")
 
 
@@ -109,10 +110,10 @@ def login_gate() -> str:
     if st.session_state.get("role"):
         return st.session_state["role"]
 
-    st.title("📋 Risk Register")
-    st.caption("Silakan masuk untuk melanjutkan.")
-    password = st.text_input("Password", type="password")
-    if st.button("Masuk", type="primary"):
+    st.title(f"{T.APP_ICON} {T.APP_TITLE}")
+    st.caption(T.LOGIN_CAPTION)
+    password = st.text_input(T.LOGIN_PASSWORD_LABEL, type="password")
+    if st.button(T.LOGIN_BUTTON, type="primary"):
         if editor_pw and hmac.compare_digest(password, str(editor_pw)):
             st.session_state["role"] = "editor"
             st.rerun()
@@ -120,71 +121,86 @@ def login_gate() -> str:
             st.session_state["role"] = "viewer"
             st.rerun()
         else:
-            st.error("Password salah.")
+            st.error(T.LOGIN_ERROR)
     st.stop()
 
 
 # ---------------------------------------------------------------------------
-# Heat map (codes shown inside the cells, axes labelled in words)
+# Heat map: layout and palette follow the organisation's reference matrix.
+#   y axis = Likelihood / Kemungkinan (5 at the top), x axis = Impact / Dampak.
+#   Cells contain risk codes only (no level names).
 # ---------------------------------------------------------------------------
 def build_heatmap(df: pd.DataFrame, mode: str) -> go.Figure:
     levels = [1, 2, 3, 4, 5]
-    cells = S.heatmap_cells(df, mode)
+    cells = S.heatmap_cells(df, mode)  # (likelihood, impact) -> risk codes
     z, hovers = [], []
-    for impact in levels:
+    for like in levels:  # rows = likelihood
         z_row, h_row = [], []
-        for like in levels:
+        for impact in levels:  # columns = impact
             value = S.score(like, impact)
+            level = S.severity(value)
             codes = cells[(like, impact)]
             hover = (f"Likelihood {like} x Impact {impact} = {value} "
-                     f"({S.SEVERITY_ID[S.severity(value)]})")
-            if codes:
-                hover += "<br>" + "<br>".join(codes[:8]) + ("<br>..." if len(codes) > 8 else "")
-            z_row.append(value)
+                     f"({level} / {S.SEVERITY_ID[level]})")
+            if codes:  # ALL risk codes of the cell are listed on hover
+                hover += f"<br><b>{len(codes)} risiko:</b><br>" + "<br>".join(S.hover_code_lines(codes))
+            z_row.append(S.SEVERITY_ORDER.index(level))  # 0..4 -> one flat colour per level
             h_row.append(hover)
         z.append(z_row)
         hovers.append(h_row)
 
-    c = S.SEVERITY_COLOR
-    scale = [
-        [0.00, c["Low"]], [0.16, c["Low"]],
-        [0.16, c["Medium"]], [0.36, c["Medium"]],
-        [0.36, c["High"]], [0.56, c["High"]],
-        [0.56, c["Critical"]], [1.00, c["Critical"]],
-    ]
+    colors = [S.SEVERITY_COLOR[name] for name in S.SEVERITY_ORDER]
+    scale = []
+    for i, colour in enumerate(colors):
+        scale += [[i / 5, colour], [(i + 1) / 5, colour]]
     fig = go.Figure(go.Heatmap(
         z=z, x=levels, y=levels, hovertext=hovers, hoverinfo="text",
-        colorscale=scale, zmin=0.5, zmax=25.5, showscale=False, xgap=4, ygap=4,
+        colorscale=scale, zmin=-0.5, zmax=4.5, showscale=False, xgap=3, ygap=3,
     ))
+    # Dashed risk-tolerance line (staircase between cells below / at-or-above the tolerance)
+    for path in S.tolerance_boundary():
+        fig.add_trace(go.Scatter(
+            x=[p[0] for p in path], y=[p[1] for p in path], mode="lines",
+            line=dict(color=S.TOLERANCE_COLOR, width=3, dash="dash"),
+            hoverinfo="skip", showlegend=False,
+        ))
+    fig.add_annotation(x=1.5, y=5.5, text=f"<b>{T.HEATMAP_TOLERANCE_LABEL}</b>", showarrow=False,
+                       xanchor="left", yanchor="bottom", yshift=6,
+                       font=dict(size=12, color=S.TOLERANCE_COLOR))
+    # Risk codes only inside the cells; more than 4 -> first 4 plus the word "more"
     for (like, impact), codes in cells.items():
-        if not codes:
-            continue
-        text = "<br>".join(codes) if len(codes) <= 3 else f"<b>{len(codes)} risiko</b>"
-        fig.add_annotation(x=like, y=impact, text=text, showarrow=False,
-                           font=dict(size=11, color="#1f2937"))
+        if codes:
+            fig.add_annotation(x=impact, y=like, showarrow=False, font=dict(size=11, color="#111827"),
+                               text="<br>".join(S.heatmap_cell_lines(codes, 4, T.HEATMAP_MORE)))
     fig.update_layout(
-        height=440, margin=dict(l=10, r=10, t=10, b=10),
-        xaxis=dict(title="Seberapa mungkin terjadi (Likelihood) →", tickmode="array",
-                   tickvals=levels,
-                   ticktext=[f"{v}<br>{S.LIKELIHOOD_LABELS[v]}" for v in levels],
-                   fixedrange=True),
-        yaxis=dict(title="Seberapa parah dampaknya (Impact) →", tickmode="array",
-                   tickvals=levels,
-                   ticktext=[f"{v} {S.IMPACT_LABELS[v]}" for v in levels],
-                   fixedrange=True),
+        height=520, margin=dict(l=10, r=10, t=44, b=10),
+        xaxis=dict(title=dict(text="<b>Impact / Dampak</b>", font=dict(size=15)),
+                   tickmode="array", tickvals=levels, range=[0.5, 5.5], fixedrange=True, automargin=True,
+                   ticktext=[f"<b>{v}</b><br>{S.IMPACT_LABELS[v]}" for v in levels]),
+        yaxis=dict(title=dict(text="<b>Likelihood / Kemungkinan</b>", font=dict(size=15)),
+                   tickmode="array", tickvals=levels, range=[0.5, 5.5], fixedrange=True, automargin=True,
+                   ticktext=[f"{S.LIKELIHOOD_LABELS[v]}  <b>{v}</b>" for v in levels]),
     )
     return fig
 
 
-def legend_chips() -> str:
-    parts = []
-    for name, low, high in [("Low", 1, 4), ("Medium", 5, 9), ("High", 10, 14), ("Critical", 15, 25)]:
-        parts.append(
-            f"<span style='background:{S.SEVERITY_COLOR[name]};color:#1f2937;padding:3px 10px;"
-            f"border-radius:12px;font-size:0.85em;margin-right:6px;display:inline-block'>"
-            f"{S.SEVERITY_ID[name]} {low}-{high}</span>"
-        )
-    return "".join(parts)
+def legend_table_html() -> str:
+    """'Scoring Tingkat Risiko' legend, same palette and order as the reference image."""
+    ranges = {name: rng for name, _low, rng in S.SEVERITY_BANDS}
+    rows = "".join(
+        f"<tr><td style='background:{S.SEVERITY_COLOR[name]};color:#111827;padding:5px 14px;"
+        f"font-weight:600;border:1px solid #9ca3af'>{name} "
+        f"<span style='font-weight:400;font-size:0.8em'>· {S.SEVERITY_ID[name]}</span></td>"
+        f"<td style='padding:5px 14px;text-align:center;border:1px solid #9ca3af;"
+        f"background:#ffffff;color:#111827'>{ranges[name]}</td></tr>"
+        for name in S.SEVERITY_ORDER
+    )
+    return (
+        "<table style='border-collapse:collapse;font-size:0.9em;margin-top:8px'>"
+        "<tr><td colspan='2' style='background:#d9d9d9;color:#111827;font-weight:700;"
+        "text-align:center;padding:5px 14px;border:1px solid #9ca3af'>SCORING TINGKAT RISIKO</td></tr>"
+        f"{rows}</table>"
+    )
 
 
 def risk_card_html(row) -> str:
@@ -287,7 +303,7 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
                 + "\n".join(f"| {v} | {S.LIKELIHOOD_LABELS[v]} | {S.IMPACT_LABELS[v]} |"
                             for v in range(1, 6))
                 + "\n\n**Tingkat Risiko = Likelihood x Impact.** "
-                  "Rendah 1-4 · Sedang 5-9 · Tinggi 10-14 · Kritis 15-25."
+                  "Very Low 1-3 · Low 4-6 · Medium 8-10 · High 12-16 · Very High 20-25."
             )
         st.markdown("**Existing Control / Pengendalian yang ada**")
         ctrl_default = r.get("control_exists") or "Ada"
@@ -396,21 +412,20 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
 # ---------------------------------------------------------------------------
 def render_register(df: pd.DataFrame, storage, can_edit: bool):
     if can_edit:
-        st.markdown("**Cara pakai:** klik **➕ Tambah risiko baru** untuk mengisi risiko baru. "
-                    "Untuk mengubah, **centang satu baris** di tabel lalu klik **✏️ Ubah risiko terpilih**.")
+        st.markdown(T.HOWTO_EDITOR)
     else:
-        st.info("Mode lihat saja: Anda dapat melihat dan mengunduh data, tetapi tidak dapat mengubahnya.")
+        st.info(T.HOWTO_VIEWER)
 
     c_add, c_edit, c_view, c_exp = st.columns([2, 2, 3, 2])
 
-    query = st.text_input("Cari", placeholder="🔎 Cari berdasarkan kode, tujuan, atau potensi risiko...",
+    query = st.text_input("Cari", placeholder=T.SEARCH_PLACEHOLDER,
                           label_visibility="collapsed")
-    with st.expander("Filter lainnya (divisi, kategori, status, level risiko)"):
+    with st.expander(T.FILTER_EXPANDER):
         f1, f2, f3, f4 = st.columns(4)
         sel_div = f1.multiselect("Divisi", sorted(set(df["divisi"]) - {""}))
         sel_cat = f2.multiselect("Kategori", sorted(set(df["category"]) - {""}))
         sel_status = f3.multiselect("Status", S.STATUSES)
-        sel_sev = f4.multiselect("Level target", ["Critical", "High", "Medium", "Low"],
+        sel_sev = f4.multiselect("Level target", list(reversed(S.SEVERITY_ORDER)),
                                  format_func=lambda v: S.SEVERITY_ID[v])
 
     fdf = df.copy()
@@ -427,10 +442,10 @@ def render_register(df: pd.DataFrame, storage, can_edit: bool):
         fdf = fdf[hay.str.contains(query.strip().lower(), regex=False)]
     fdf = fdf.sort_values("res_score", ascending=False).reset_index(drop=True)
 
-    view_choice = c_view.radio("Tampilan tabel", ["Tampilan ringkas", "Tampilan lengkap"],
+    view_choice = c_view.radio("Tampilan tabel", [T.VIEW_COMPACT, T.VIEW_FULL],
                                horizontal=True, label_visibility="collapsed",
                                help="Ringkas = kolom penting saja. Lengkap = seluruh kolom template.")
-    view = "compact" if view_choice == "Tampilan ringkas" else "full"
+    view = "compact" if view_choice == T.VIEW_COMPACT else "full"
 
     selection_slot = st.empty()
     selected_kode = None
@@ -452,13 +467,13 @@ def render_register(df: pd.DataFrame, storage, can_edit: bool):
             selection_slot.success(f"Terpilih: **{selected_kode}** - {title}")
         elif not fdf.empty:
             selection_slot.caption("Belum ada baris yang dipilih. Centang kotak di sisi kiri sebuah baris.")
-        if c_add.button("➕ Tambah risiko baru", type="primary"):
+        if c_add.button(T.BTN_ADD, type="primary"):
             risk_dialog(storage, df, None)
-        if c_edit.button("✏️ Ubah risiko terpilih", disabled=selected_kode is None):
+        if c_edit.button(T.BTN_EDIT, disabled=selected_kode is None):
             risk_dialog(storage, df, df[df["kode"] == selected_kode].iloc[0].to_dict())
 
     c_exp.download_button(
-        "⬇️ Unduh CSV", data=df.rename(columns=S.LABELS).to_csv(index=False).encode("utf-8-sig"),
+        T.BTN_EXPORT, data=df.rename(columns=S.LABELS).to_csv(index=False).encode("utf-8-sig"),
         file_name=f"register_risiko_{date.today().isoformat()}.csv", mime="text/csv",
     )
 
@@ -468,13 +483,13 @@ def render_register(df: pd.DataFrame, storage, can_edit: bool):
 # ---------------------------------------------------------------------------
 def render_summary(df: pd.DataFrame):
     overdue = S.overdue_mask(df)
+    target_level = df["res_score"].apply(S.severity)
     cards = [
-        ("Total risiko", len(df), "Jumlah seluruh risiko yang tercatat."),
-        ("Kritis", int((df["res_score"] >= 15).sum()), "Risiko dengan level target 15-25."),
-        ("Tinggi", int(df["res_score"].between(10, 14).sum()), "Risiko dengan level target 10-14."),
-        ("Review terlambat", int(overdue.sum()), "Tanggal review sudah lewat dan status belum Closed."),
-        ("Rata-rata skor target", f"{df['res_score'].mean():.1f}" if len(df) else "0.0",
-         "Rata-rata Tingkat Risiko (Targeted), skala 1-25."),
+        (T.KPI_TOTAL, len(df), T.KPI_TOTAL_TIP),
+        (T.KPI_CRITICAL, int((target_level == "Very High").sum()), T.KPI_CRITICAL_TIP),
+        (T.KPI_HIGH, int((target_level == "High").sum()), T.KPI_HIGH_TIP),
+        (T.KPI_OVERDUE, int(overdue.sum()), T.KPI_OVERDUE_TIP),
+        (T.KPI_AVG, f"{df['res_score'].mean():.1f}" if len(df) else "0.0", T.KPI_AVG_TIP),
     ]
     for col, (label, value, tip) in zip(st.columns(5), cards):
         with col:
@@ -483,29 +498,30 @@ def render_summary(df: pd.DataFrame):
 
     left, right = st.columns([3, 2])
     with left:
-        st.subheader("Peta risiko (heat map)")
-        view = st.radio("Pilih sudut pandang",
-                        ["Target setelah mitigasi (Targeted)", "Sebelum pengendalian (Inherent)"],
+        st.subheader(T.HEATMAP_TITLE)
+        view = st.radio(T.HEATMAP_VIEW_LABEL,
+                        [T.HEATMAP_VIEW_TARGETED, T.HEATMAP_VIEW_INHERENT],
                         horizontal=True)
-        mode = "targeted" if view.startswith("Target") else "inherent"
+        mode = "targeted" if view == T.HEATMAP_VIEW_TARGETED else "inherent"
         st.plotly_chart(build_heatmap(df, mode), key="heatmap")
-        st.markdown(legend_chips(), unsafe_allow_html=True)
+        st.markdown(legend_table_html(), unsafe_allow_html=True)
         with st.expander("📖 Cara membaca peta ini"):
             st.markdown(
-                "- Setiap kotak adalah kombinasi **kemungkinan terjadi** (kiri ke kanan) dan "
-                "**tingkat dampak** (bawah ke atas).\n"
+                "- Setiap kotak adalah kombinasi **tingkat dampak** (kiri ke kanan) dan "
+                "**kemungkinan terjadi** (bawah ke atas).\n"
                 "- Kode di dalam kotak adalah risiko yang berada di posisi tersebut. "
-                "Jika lebih dari tiga, ditampilkan jumlahnya.\n"
+                "Jika lebih dari empat, ditambahkan tulisan \"more\"; arahkan kursor ke kotak untuk melihat semua kodenya.\n"
+                "- **Garis putus-putus merah** adalah batas toleransi risiko: kotak di kanan-atas garis berada di atas batas toleransi (skor 8 ke atas).\n"
                 "- Semakin ke **kanan-atas** (merah), semakin berbahaya. Skor = Likelihood x Impact.\n"
                 "- **Inherent** = penilaian sebelum pengendalian. **Targeted** = target setelah mitigasi. "
                 "Idealnya risiko bergeser ke kiri-bawah setelah mitigasi."
             )
     with right:
-        st.subheader("Risiko teratas")
-        st.caption("Diurutkan berdasarkan level target (Targeted) tertinggi.")
+        st.subheader(T.TOP_RISKS_TITLE)
+        st.caption(T.TOP_RISKS_CAPTION)
         top = df.sort_values("res_score", ascending=False).head(6)
         if top.empty:
-            st.info("Belum ada risiko tercatat.")
+            st.info(T.TOP_RISKS_EMPTY)
         else:
             st.markdown("".join(risk_card_html(row) for _, row in top.iterrows()),
                         unsafe_allow_html=True)
@@ -522,32 +538,30 @@ def main():
 
     head_l, head_r = st.columns([5, 2])
     with head_l:
-        st.title("📋 Risk Register")
-        st.caption("Daftar risiko, penilaian, dan rencana mitigasi. "
-                   "Risk owner mengisi data di tab **Daftar Risiko**; manajemen melihat tab **Ringkasan**.")
+        st.title(f"{T.APP_ICON} {T.APP_TITLE}")
+        st.caption(T.APP_SUBTITLE)
     with head_r:
         b1, b2 = st.columns(2)
-        if b1.button("🔄 Muat ulang"):
+        if b1.button(T.BTN_REFRESH):
             refresh_data()
             st.rerun()
-        if st.session_state.get("role") and b2.button("Keluar"):
+        if st.session_state.get("role") and b2.button(T.BTN_SIGNOUT):
             st.session_state.pop("role", None)
             st.rerun()
 
     if mode == "demo":
-        st.info("**Mode demo:** data di bawah adalah contoh fiktif dan hanya tersimpan sementara. "
-                "Sambungkan Google Sheets agar data tersimpan permanen dan dapat dipakai bersama.")
+        st.info(T.DEMO_BANNER)
+        # Show diagnostics only when something is configured but not working
         if conn_error or diagnose_secrets(st.secrets)["sections"]:
             render_demo_diagnostics(conn_error)
     elif not (secret("auth", "viewer_password") or secret("auth", "editor_password")):
-        st.warning("Aplikasi belum diproteksi password: siapa pun yang memiliki link dapat mengubah data. "
-                   "Atur password di bagian [auth] pada secrets.")
+        st.warning(T.NO_PASSWORD_WARNING)
 
     flash = st.session_state.pop("flash", None)
     if flash:
         st.success(flash)
 
-    tab_register, tab_summary = st.tabs(["📝 Daftar Risiko", "📊 Ringkasan & Peta Risiko"])
+    tab_register, tab_summary = st.tabs([T.TAB_REGISTER, T.TAB_SUMMARY])
     with tab_register:
         render_register(df, storage, can_edit)
     with tab_summary:
