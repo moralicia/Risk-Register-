@@ -537,7 +537,8 @@ def main():
     if mode == "demo":
         st.info("**Mode demo:** data di bawah adalah contoh fiktif dan hanya tersimpan sementara. "
                 "Sambungkan Google Sheets agar data tersimpan permanen dan dapat dipakai bersama.")
-        render_demo_diagnostics(conn_error)
+        if conn_error or diagnose_secrets(st.secrets)["sections"]:
+            render_demo_diagnostics(conn_error)
     elif not (secret("auth", "viewer_password") or secret("auth", "editor_password")):
         st.warning("Aplikasi belum diproteksi password: siapa pun yang memiliki link dapat mengubah data. "
                    "Atur password di bagian [auth] pada secrets.")
