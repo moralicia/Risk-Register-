@@ -256,7 +256,7 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
             categories.append(current_cat)
         category = st.selectbox("Risk Category / Kategori Risiko", categories,
                                 index=categories.index(current_cat), key=f"{kp}_category")
-        cause = text("Risk Cause / Penyebab Risiko", "cause",
+        cause = text("Risk Cause / Penyebab Risiko", "cause", area=True,
                      help_text="Akar penyebab yang membuat risiko ini bisa terjadi.")
 
     with t2:
