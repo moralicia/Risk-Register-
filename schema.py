@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
+import re 
+
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -28,6 +30,9 @@ HEADERS = [
 
 KEYS = [
     "kode", "objective", "potensi", "category", "cause",
+        for col in MULTILINE_KEYS:  # table cells are single-line: show line breaks as spaces
+            if col in out:
+                out[col] = out[col].str.replace("\n", "  ", regex=False)
     "sev_desc", "sev_rp",
     "divisi", "dept", "unit", "external",
     "control_exists", "control_desc",
@@ -220,3 +225,20 @@ def display_frame(df: pd.DataFrame, view: str = "compact") -> pd.DataFrame:
     if "sev_rp" in out:
         out["sev_rp"] = out["sev_rp"].apply(lambda v: "—" if pd.isna(v) else f"{v:,.0f}")
     return out.rename(columns=labels)
+
+MULTILINE_KEYS = ["objective", "potensi", "cause", "sev_desc", "control_desc", "mit_desc"]
+_BULLET_MARKER = re.compile(r"^\s*(?:[-*\u2013\u2014]\s+|[\u2022\u00b7]\s*)")
+
+
+def format_bullets(text, bullet: str = "\u2022 ") -> str:
+    lines = []
+    for raw in str(text or "").splitlines():
+        line = _BULLET_MARKER.sub("", raw).strip()
+        if line:
+            lines.append(bullet + line)
+    return "\n".join(lines)
+
+def bullets_markdown(text) -> str:
+    items = [_BULLET_MARKER.sub("", line).strip() for line in str(text or "").splitlines()]
+    items = [i for i in items if i]
+    return "\n".join(f"- {i}" for i in items) if items else "-"
