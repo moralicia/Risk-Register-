@@ -30,9 +30,6 @@ HEADERS = [
 
 KEYS = [
     "kode", "objective", "potensi", "category", "cause",
-        for col in MULTILINE_KEYS:  # table cells are single-line: show line breaks as spaces
-            if col in out:
-                out[col] = out[col].str.replace("\n", "  ", regex=False)
     "sev_desc", "sev_rp",
     "divisi", "dept", "unit", "external",
     "control_exists", "control_desc",
@@ -56,24 +53,29 @@ STATUSES = ["Open", "Mitigating", "Monitoring", "Closed"]
 MIT_OPTIONS = ["Avoid", "Reduce", "Transfer", "Accept"]
 CONTROL_OPTIONS = ["Ada", "Tidak Ada"]
 
-LIKELIHOOD_LABELS = {1: "Rare", 2: "Unlikely", 3: "Possible", 4: "Likely", 5: "Almost certain"}
-IMPACT_LABELS = {1: "Negligible", 2: "Minor", 3: "Moderate", 4: "Major", 5: "Severe"}
+LIKELIHOOD_LABELS = {1: "Rare", 2: "Unlikely", 3: "Moderate", 4: "Likely", 5: "Almost Certain"}
+IMPACT_LABELS = {1: "Insignificant", 2: "Minor", 3: "Moderate", 4: "Major", 5: "Significant"}
 
 # ---------------------------------------------------------------------------
 # Scoring: Tingkat Risiko = Likelihood x Impact  (5x5 matrix, scores 1..25)
 # ---------------------------------------------------------------------------
-SEVERITY_BANDS = [
-    ("Critical", 15, 25),
-    ("High", 10, 14),
-    ("Medium", 5, 9),
-    ("Low", 1, 4),
+
+SEVERITY_BANDS = [  # (name, lowest score of the band, range shown to users)
+    ("Very High", 17, "20-25"),
+    ("High", 11, "12-16"),
+    ("Medium", 7, "8-10"),
+    ("Low", 4, "4-6"),
+    ("Very Low", 1, "1-3"),
 ]
-SEVERITY_EMOJI = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢", "Unrated": "⚪"}
+SEVERITY_ORDER = ["Very Low", "Low", "Medium", "High", "Very High"]  # low -> high
+SEVERITY_EMOJI = {"Very High": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢",
+                  "Very Low": "🔵", "Unrated": "⚪"}
 SEVERITY_COLOR = {
-    "Low": "#CDEBD5",
-    "Medium": "#F7E7A6",
-    "High": "#F6C79A",
-    "Critical": "#EFA3A3",
+    "Very Low": "#5B9BD4",
+    "Low": "#C5DFB4",
+    "Medium": "#FFFF00",
+    "High": "#FFC000",
+    "Very High": "#FF0000",
 }
 
 
@@ -184,8 +186,8 @@ def risk_to_record(risk: dict) -> dict:
 # ---------------------------------------------------------------------------
 # UI helpers (pure pandas - tested without Streamlit)
 # ---------------------------------------------------------------------------
-SEVERITY_ID = {"Critical": "Kritis", "High": "Tinggi", "Medium": "Sedang", "Low": "Rendah",
-               "Unrated": "Belum dinilai"}
+SEVERITY_ID = {"Very High": "Sangat tinggi", "High": "Tinggi", "Medium": "Sedang",
+               "Low": "Rendah", "Very Low": "Sangat rendah", "Unrated": "Belum dinilai"}
 
 COMPACT_KEYS = ["kode", "potensi", "category", "divisi", "inh_score", "res_score",
                 "status", "review_date"]
@@ -222,6 +224,10 @@ def display_frame(df: pd.DataFrame, view: str = "compact") -> pd.DataFrame:
             (d + "  ⚠️ terlambat") if o else (d or "—")
             for d, o in zip(out["review_date"], overdue)
         ]
+    for col in MULTILINE_KEYS:  # table cells are single-line: show line breaks as spaces
+        if col in out:
+            out[col] = out[col].str.replace("\n", "  ", regex=False)
+    if "sev_rp" in out:
     if "sev_rp" in out:
         out["sev_rp"] = out["sev_rp"].apply(lambda v: "—" if pd.isna(v) else f"{v:,.0f}")
     return out.rename(columns=labels)
@@ -242,3 +248,63 @@ def bullets_markdown(text) -> str:
     items = [_BULLET_MARKER.sub("", line).strip() for line in str(text or "").splitlines()]
     items = [i for i in items if i]
     return "\n".join(f"- {i}" for i in items) if items else "-"
+
+TOLERANCE_MIN_SCORE = 8  # scores at or above this are above the risk tolerance line
+TOLERANCE_COLOR = "#FF2500"
+
+
+def _chain_segments(segments):
+    adjacency = {}
+    for a, b in sorted(segments):
+        adjacency.setdefault(a, []).append(b)
+        adjacency.setdefault(b, []).append(a)
+    visited = set()
+    lines = []
+    starts = sorted(p for p, nb in adjacency.items() if len(nb) == 1) + sorted(adjacency)
+    for start in starts:
+        path, current = [start], start
+        while True:
+            nxt = [q for q in adjacency[current] if frozenset((current, q)) not in visited]
+            if not nxt:
+                break
+            visited.add(frozenset((current, nxt[0])))
+            path.append(nxt[0])
+            current = nxt[0]
+        if len(path) > 1:
+            lines.append(path)
+    return lines
+
+
+def _drop_collinear(path):
+    out = [path[0]]
+    for prev, cur, nxt in zip(path, path[1:], path[2:]):
+        same_x = prev[0] == cur[0] == nxt[0]
+        same_y = prev[1] == cur[1] == nxt[1]
+        if not (same_x or same_y):
+            out.append(cur)
+    out.append(path[-1])
+    return out
+
+
+def tolerance_boundary(min_score=TOLERANCE_MIN_SCORE):
+    def above(like, impact):
+        return score(like, impact) >= min_score
+
+    segments = set()
+    for like in range(1, 6):
+        for impact in range(1, 6):
+            if impact < 5 and above(like, impact) != above(like, impact + 1):
+                segments.add(((impact + 0.5, like - 0.5), (impact + 0.5, like + 0.5)))
+            if like < 5 and above(like, impact) != above(like + 1, impact):
+                segments.add(((impact - 0.5, like + 0.5), (impact + 0.5, like + 0.5)))
+    return [_drop_collinear(p) for p in _chain_segments(segments)]
+
+
+def heatmap_cell_lines(codes, limit=4, more_text="more"):
+    if len(codes) <= limit:
+        return list(codes)
+    return list(codes[:limit]) + [more_text]
+
+
+def hover_code_lines(codes, per_line=3):
+    return [", ".join(codes[i:i + per_line]) for i in range(0, len(codes), per_line)]
