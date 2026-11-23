@@ -18,7 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-import scheme as S
+import schema as S
 import teks as T
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
@@ -272,8 +272,7 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
             categories.append(current_cat)
         category = st.selectbox("Risk Category / Kategori Risiko", categories,
                                 index=categories.index(current_cat), key=f"{kp}_category")
-        cause = text("Risk Cause / Penyebab Risiko", "cause",
-                     help_text="Akar penyebab yang membuat risiko ini bisa terjadi.")
+        cause = text("Risk Cause / Penyebab Risiko", "cause", area=True, help_text=T.CAUSE_HELP)
 
     with t2:
         st.markdown("**Severity / Dampak / Potensi Kerugian**")
@@ -388,7 +387,7 @@ def risk_dialog(storage, df: pd.DataFrame, record: dict | None):
             return
         record_out = dict(
             kode=final_kode, objective=objective.strip(), potensi=potensi.strip(),
-            category=category, cause=cause.strip(), sev_desc=sev_desc.strip(),
+            category=category, cause=S.format_bullets(cause), sev_desc=sev_desc.strip(),
             sev_rp=sev_rp if sev_rp else "", divisi=divisi.strip(), dept=dept.strip(),
             unit=unit.strip(), external=external.strip(), control_exists=control_exists,
             control_desc=control_desc.strip(), inh_l=inh_l, inh_i=inh_i,
@@ -476,6 +475,12 @@ def render_register(df: pd.DataFrame, storage, can_edit: bool):
         T.BTN_EXPORT, data=df.rename(columns=S.LABELS).to_csv(index=False).encode("utf-8-sig"),
         file_name=f"register_risiko_{date.today().isoformat()}.csv", mime="text/csv",
     )
+
+    if selected_kode:  # readable bullet view of the multi-line fields
+        row = df[df["kode"] == selected_kode].iloc[0]
+        with st.expander(T.DETAIL_EXPANDER, expanded=False):
+            st.markdown("**Objective / Tujuan**\n\n" + S.bullets_markdown(row["objective"]))
+            st.markdown("**Risk Cause / Penyebab Risiko**\n\n" + S.bullets_markdown(row["cause"]))
 
 
 # ---------------------------------------------------------------------------

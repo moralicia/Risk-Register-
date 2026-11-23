@@ -8,6 +8,7 @@ of this project, so the same Google Sheet works with either front end.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -46,7 +47,7 @@ LEVEL_COLS = ["inh_l", "inh_i", "res_l", "res_i"]
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-CATEGORIES = ["Market", "Credit", "Liquidity", "Operational", "Compliance", "Strategic", "Other"]
+CATEGORIES = ["Market", "Credit", "Liquidity", "Insurance", "Operational", "Compliance", "Strategic", "Other"]
 STATUSES = ["Open", "Mitigating", "Monitoring", "Closed"]
 MIT_OPTIONS = ["Avoid", "Reduce", "Transfer", "Accept"]
 CONTROL_OPTIONS = ["Ada", "Tidak Ada"]
@@ -226,6 +227,9 @@ def display_frame(df: pd.DataFrame, view: str = "compact") -> pd.DataFrame:
             (d + "  ⚠️ terlambat") if o else (d or "—")
             for d, o in zip(out["review_date"], overdue)
         ]
+    for col in MULTILINE_KEYS:  # table cells are single-line: show line breaks as spaces
+        if col in out:
+            out[col] = out[col].str.replace("\n", "  ", regex=False)
     if "sev_rp" in out:
         out["sev_rp"] = out["sev_rp"].apply(lambda v: "—" if pd.isna(v) else f"{v:,.0f}")
     return out.rename(columns=labels)
@@ -300,3 +304,28 @@ def heatmap_cell_lines(codes: list[str], limit: int = 4, more_text: str = "more"
 def hover_code_lines(codes: list[str], per_line: int = 3) -> list[str]:
     """ALL codes of a cell, grouped per line so the tooltip stays compact."""
     return [", ".join(codes[i:i + per_line]) for i in range(0, len(codes), per_line)]
+
+
+# ---------------------------------------------------------------------------
+# Multi-line text as bullet points (used by Risk Cause)
+# ---------------------------------------------------------------------------
+MULTILINE_KEYS = ["objective", "potensi", "cause", "sev_desc", "control_desc", "mit_desc"]
+_BULLET_MARKER = re.compile(r"^\s*(?:[-*\u2013\u2014]\s+|[\u2022\u00b7]\s*)")
+
+
+def format_bullets(text, bullet: str = "\u2022 ") -> str:
+    """One bullet per non-empty line. A leading '- ', '* ' or bullet marker is normalised,
+    while text such as '-5% change' is left untouched."""
+    lines = []
+    for raw in str(text or "").splitlines():
+        line = _BULLET_MARKER.sub("", raw).strip()
+        if line:
+            lines.append(bullet + line)
+    return "\n".join(lines)
+
+
+def bullets_markdown(text) -> str:
+    """Markdown list for on-screen display (one '- ' item per non-empty line)."""
+    items = [_BULLET_MARKER.sub("", line).strip() for line in str(text or "").splitlines()]
+    items = [i for i in items if i]
+    return "\n".join(f"- {i}" for i in items) if items else "-"
