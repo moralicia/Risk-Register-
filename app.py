@@ -18,6 +18,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import scheme as S
 import teks as T
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
