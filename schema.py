@@ -8,9 +8,8 @@ of this project, so the same Google Sheet works with either front end.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
-
-import re 
 
 import pandas as pd
 
@@ -48,7 +47,7 @@ LEVEL_COLS = ["inh_l", "inh_i", "res_l", "res_i"]
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-CATEGORIES = ["Market", "Insurance", "Credit", "Liquidity", "Operational", "Compliance", "Strategic", "Legal", "Reputation", "Other"]
+CATEGORIES = ["Market", "Credit", "Liquidity", "Insurance", "Operational", "Compliance", "Strategic", "Other"]
 STATUSES = ["Open", "Mitigating", "Monitoring", "Closed"]
 MIT_OPTIONS = ["Avoid", "Reduce", "Transfer", "Accept"]
 CONTROL_OPTIONS = ["Ada", "Tidak Ada"]
@@ -59,7 +58,10 @@ IMPACT_LABELS = {1: "Insignificant", 2: "Minor", 3: "Moderate", 4: "Major", 5: "
 # ---------------------------------------------------------------------------
 # Scoring: Tingkat Risiko = Likelihood x Impact  (5x5 matrix, scores 1..25)
 # ---------------------------------------------------------------------------
-
+# Five levels, matching the organisation's "Scoring Tingkat Risiko" table:
+#   Very Low 1-3 | Low 4-6 | Medium 8-10 | High 12-16 | Very High 20-25
+# Products of two 1..5 numbers can never be 7, 11, 13, 14 or 17-19, so the lowest
+# score of each band below (7, 11, 17) only closes those gaps for classification.
 SEVERITY_BANDS = [  # (name, lowest score of the band, range shown to users)
     ("Very High", 17, "20-25"),
     ("High", 11, "12-16"),
@@ -70,6 +72,7 @@ SEVERITY_BANDS = [  # (name, lowest score of the band, range shown to users)
 SEVERITY_ORDER = ["Very Low", "Low", "Medium", "High", "Very High"]  # low -> high
 SEVERITY_EMOJI = {"Very High": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢",
                   "Very Low": "🔵", "Unrated": "⚪"}
+# Exact colours sampled from the reference matrix image
 SEVERITY_COLOR = {
     "Very Low": "#5B9BD4",
     "Low": "#C5DFB4",
@@ -88,7 +91,7 @@ def severity(value: float | int) -> str:
     """Map a 1..25 score to a severity band name."""
     if value is None or pd.isna(value) or value <= 0:
         return "Unrated"
-    for name, low, _high in SEVERITY_BANDS:
+    for name, low, _display in SEVERITY_BANDS:
         if value >= low:
             return name
     return "Unrated"
@@ -228,37 +231,26 @@ def display_frame(df: pd.DataFrame, view: str = "compact") -> pd.DataFrame:
         if col in out:
             out[col] = out[col].str.replace("\n", "  ", regex=False)
     if "sev_rp" in out:
-    if "sev_rp" in out:
         out["sev_rp"] = out["sev_rp"].apply(lambda v: "—" if pd.isna(v) else f"{v:,.0f}")
     return out.rename(columns=labels)
 
-MULTILINE_KEYS = ["objective", "potensi", "cause", "sev_desc", "control_desc", "mit_desc"]
-_BULLET_MARKER = re.compile(r"^\s*(?:[-*\u2013\u2014]\s+|[\u2022\u00b7]\s*)")
+
+# ---------------------------------------------------------------------------
+# Heat map helpers: risk-tolerance line and cell text (pure, tested)
+# ---------------------------------------------------------------------------
+# Scores at or above this value are above the risk tolerance line (Medium and higher).
+# Read from the reference matrix; change it here if the company's tolerance differs.
+TOLERANCE_MIN_SCORE = 8
+TOLERANCE_COLOR = "#FF2500"  # dashed-line colour sampled from the reference matrix
 
 
-def format_bullets(text, bullet: str = "\u2022 ") -> str:
-    lines = []
-    for raw in str(text or "").splitlines():
-        line = _BULLET_MARKER.sub("", raw).strip()
-        if line:
-            lines.append(bullet + line)
-    return "\n".join(lines)
-
-def bullets_markdown(text) -> str:
-    items = [_BULLET_MARKER.sub("", line).strip() for line in str(text or "").splitlines()]
-    items = [i for i in items if i]
-    return "\n".join(f"- {i}" for i in items) if items else "-"
-
-TOLERANCE_MIN_SCORE = 8  # scores at or above this are above the risk tolerance line
-TOLERANCE_COLOR = "#FF2500"
-
-
-def _chain_segments(segments):
-    adjacency = {}
+def _chain_segments(segments) -> list[list[tuple[float, float]]]:
+    """Join unit segments into polylines (deterministic order)."""
+    adjacency: dict = {}
     for a, b in sorted(segments):
         adjacency.setdefault(a, []).append(b)
         adjacency.setdefault(b, []).append(a)
-    visited = set()
+    visited: set = set()
     lines = []
     starts = sorted(p for p, nb in adjacency.items() if len(nb) == 1) + sorted(adjacency)
     for start in starts:
@@ -286,8 +278,10 @@ def _drop_collinear(path):
     return out
 
 
-def tolerance_boundary(min_score=TOLERANCE_MIN_SCORE):
-    def above(like, impact):
+def tolerance_boundary(min_score: int = TOLERANCE_MIN_SCORE) -> list[list[tuple[float, float]]]:
+    """Polyline(s) in heat-map coordinates (x = impact, y = likelihood) that separate
+    cells below the tolerance from cells at or above it."""
+    def above(like: int, impact: int) -> bool:
         return score(like, impact) >= min_score
 
     segments = set()
@@ -300,11 +294,38 @@ def tolerance_boundary(min_score=TOLERANCE_MIN_SCORE):
     return [_drop_collinear(p) for p in _chain_segments(segments)]
 
 
-def heatmap_cell_lines(codes, limit=4, more_text="more"):
+def heatmap_cell_lines(codes: list[str], limit: int = 4, more_text: str = "more") -> list[str]:
+    """Text inside a heat-map cell: up to `limit` risk codes, then the word 'more'."""
     if len(codes) <= limit:
         return list(codes)
     return list(codes[:limit]) + [more_text]
 
 
-def hover_code_lines(codes, per_line=3):
+def hover_code_lines(codes: list[str], per_line: int = 3) -> list[str]:
+    """ALL codes of a cell, grouped per line so the tooltip stays compact."""
     return [", ".join(codes[i:i + per_line]) for i in range(0, len(codes), per_line)]
+
+
+# ---------------------------------------------------------------------------
+# Multi-line text as bullet points (used by Risk Cause)
+# ---------------------------------------------------------------------------
+MULTILINE_KEYS = ["objective", "potensi", "cause", "sev_desc", "control_desc", "mit_desc"]
+_BULLET_MARKER = re.compile(r"^\s*(?:[-*\u2013\u2014]\s+|[\u2022\u00b7]\s*)")
+
+
+def format_bullets(text, bullet: str = "\u2022 ") -> str:
+    """One bullet per non-empty line. A leading '- ', '* ' or bullet marker is normalised,
+    while text such as '-5% change' is left untouched."""
+    lines = []
+    for raw in str(text or "").splitlines():
+        line = _BULLET_MARKER.sub("", raw).strip()
+        if line:
+            lines.append(bullet + line)
+    return "\n".join(lines)
+
+
+def bullets_markdown(text) -> str:
+    """Markdown list for on-screen display (one '- ' item per non-empty line)."""
+    items = [_BULLET_MARKER.sub("", line).strip() for line in str(text or "").splitlines()]
+    items = [i for i in items if i]
+    return "\n".join(f"- {i}" for i in items) if items else "-"
