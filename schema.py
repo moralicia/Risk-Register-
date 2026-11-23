@@ -46,7 +46,7 @@ LEVEL_COLS = ["inh_l", "inh_i", "res_l", "res_i"]
 # ---------------------------------------------------------------------------
 # Option lists
 # ---------------------------------------------------------------------------
-CATEGORIES = ["Market", "Credit", "Liquidity", "Operational", "Compliance", "Strategic", "Other"]
+CATEGORIES = ["Market", "Insurance", "Credit", "Liquidity", "Operational", "Compliance", "Strategic", "Legal", "Reputation", "Other"]
 STATUSES = ["Open", "Mitigating", "Monitoring", "Closed"]
 MIT_OPTIONS = ["Avoid", "Reduce", "Transfer", "Accept"]
 CONTROL_OPTIONS = ["Ada", "Tidak Ada"]
