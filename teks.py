@@ -100,5 +100,7 @@ TOP_RISKS_TITLE = "Risiko teratas"
 TOP_RISKS_CAPTION = "Diurutkan berdasarkan level target (Targeted) tertinggi."
 TOP_RISKS_EMPTY = "Belum ada risiko tercatat."
 
-HEATMAP_TOLERANCE_LABEL = "Batas toleransi risiko"   # tulisan di dekat garis putus-putus merah
-HEATMAP_MORE = "more"                                 # tampil di kotak yang berisi lebih dari 4 risiko
+HEATMAP_TOLERANCE_LABEL = "Batas toleransi risiko"
+HEATMAP_MORE = "more"
+CAUSE_HELP = "Tulis satu penyebab per baris. Setiap baris otomatis menjadi satu poin (•)."
+DETAIL_EXPANDER = "📄 Detail risiko terpilih (Objective dan Risk Cause)"
