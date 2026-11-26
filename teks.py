@@ -105,3 +105,7 @@ HEATMAP_MORE = "more"                                 # tampil di kotak yang ber
 
 CAUSE_HELP = "Tulis satu penyebab per baris. Setiap baris otomatis menjadi satu poin (•)."
 DETAIL_EXPANDER = "📄 Detail risiko terpilih (Objective dan Risk Cause)"
+
+CRITERIA_TITLE = "Dasar Penilaian Risiko"
+CRITERIA_TAB_LIKELIHOOD = "Tabel Likelihood"
+CRITERIA_TAB_IMPACT = "Tabel Impact"
