@@ -20,6 +20,7 @@ import streamlit as st
 
 import schema as S
 import teks as T
+import kriteria as K
 from sample_data import sample_risks
 from storage import CSVStorage, GoogleSheetsStorage, diagnose_secrets
 
@@ -530,6 +531,12 @@ def render_summary(df: pd.DataFrame):
         else:
             st.markdown("".join(risk_card_html(row) for _, row in top.iterrows()),
                         unsafe_allow_html=True)
+    st.subheader(T.CRITERIA_TITLE)
+    tab_lik, tab_imp = st.tabs([T.CRITERIA_TAB_LIKELIHOOD, T.CRITERIA_TAB_IMPACT])
+    with tab_lik:
+        st.markdown(K.likelihood_table_html(), unsafe_allow_html=True)
+    with tab_imp:
+        st.markdown(K.impact_table_html(), unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
